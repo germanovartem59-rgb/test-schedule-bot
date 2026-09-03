@@ -16,7 +16,7 @@ API = "https://api.telegram.org/bot{token}/{method}"
 
 def send_message(chat_id: int, text: str):
     keyboard = {
-        "keyboard": [["Сегодня", "Завтра"], ["Неделя"]],
+        "keyboard": [["Сегодня", "Завтра"], ["Неделя", "Сейчас"], ["Расписание"]],
         "resize_keyboard": True,
     }
     requests.post(
