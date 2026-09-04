@@ -1,9 +1,19 @@
 services:
-  - type: worker
-    name: test-schedule-bot
+  - type: web
+    name: phone-market
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    startCommand: gunicorn api.index:app --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 120
     envVars:
-      - key: BOT_TOKEN
+      - key: ADMIN_LOGIN
+        value: admin
+      - key: ADMIN_PASSWORD
+        value: admin
+      - key: SECRET_KEY
+        generateValue: true
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
+      - key: SESSION_STRING
         sync: false
