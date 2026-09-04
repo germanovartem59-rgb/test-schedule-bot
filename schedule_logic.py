@@ -243,9 +243,13 @@ def hw_list_text() -> str:
 
 
 def hw_add(subject: str, text: str) -> int:
-    hid = _data["hw_next_id"]
+    used = {h["id"] for h in _data["homework"]}
+    hid = 1
+    while hid in used:
+        hid += 1
     _data["homework"].append({"id": hid, "subject": subject, "text": text})
-    _data["hw_next_id"] = hid + 1
+    _data["homework"].sort(key=lambda h: h["id"])
+    _data["hw_next_id"] = max(used | {hid}) + 1 if used or hid else 2
     _save()
     return hid
 
@@ -309,9 +313,9 @@ def list_overrides_text() -> str:
 
 def parse_day(text: str, today: date) -> date | None:
     t = (text or "").strip().lower()
-    if t in ("сегодня", "today"):
+    if n in ("сегодня", "today"):
         return today
-    if t in ("завтра", "tomorrow"):
+    if n in ("завтра", "tomorrow"):
         return today + timedelta(days=1)
     # ДД.ММ или ДД.ММ.ГГГГ
     import re
@@ -327,16 +331,45 @@ def parse_day(text: str, today: date) -> date | None:
 
 
 BASE_KEYBOARD = [["Сегодня", "Завтра"], ["Неделя", "Сейчас"], ["Расписание", "📝 Д/З"]]
-ADMIN_KEYBOARD = [["➕ ДЗ", "🗑 ДЗ"], ["❌ Отмена пары", "✏️ Замена"], ["📅 Выходной", "↩️ Сброс"], ["📋 Правки", "🚪 Выйти"]]
+
+# Inline-кнопки: (текст, callback_data)
+MAIN_INLINE = [
+    [("📅 Сегодня", "cmd:today"), ("📅 Завтра", "cmd:tomorrow")],
+    [("🔢 Неделя", "cmd:week"), ("⏰ Сейчас", "cmd:now")],
+    [("🗓 Расписание", "cmd:schedule"), ("📝 Д/З", "cmd:hw")],
+]
+ADMIN_INLINE = [
+    [("➕ ДЗ", "adm:hw_add"), ("🗑 ДЗ", "adm:hw_del")],
+    [("❌ Отмена пары", "adm:cancel"), ("✏️ Замена", "adm:replace")],
+    [("📅 Выходной", "adm:off"), ("↩️ Сброс", "adm:reset")],
+    [("📋 Правки", "adm:list"), ("🚪 Выйти", "adm:exit")],
+]
+
+
+def inline_main(user_id: int):
+    kb = [[{"text": t, "callback_data": d} for t, d in row] for row in MAIN_INLINE]
+    if is_admin(user_id):
+        kb.append([{"text": "⚙️ Админка", "callback_data": "adm:menu"}])
+    return kb
+
+
+def inline_admin():
+    return [[{"text": t, "callback_data": d} for t, d in row] for row in ADMIN_INLINE]
 
 
 def get_keyboard(user_id: int, admin_mode: bool = False):
     if admin_mode and is_admin(user_id):
-        return ADMIN_KEYBOARD
-    kb = [row[:] for row in BASE_KEYBOARD]
-    if is_admin(user_id):
-        kb.append(["⚙️ Админка"])
-    return kb
+        return inline_admin()
+    return inline_main(user_id)
+
+
+def normalize_cmd(text: str) -> str:
+    """Срезает префиксы '.'/'/' и '@имябота', приводит к нижнему регистру."""
+    t = (text or "").strip().lower()
+    t = t.lstrip("./")
+    if "@" in t:
+        t = t.split("@", 1)[0]
+    return t.strip()
 
 
 ADMIN_MENU_TEXT = (
@@ -354,52 +387,55 @@ ADMIN_MENU_TEXT = (
 
 
 def process_message(user_id: int, text: str, today: date | None = None,
-                    now: datetime | None = None) -> tuple[str, list]:
+                    now: datetime | None = None, chat_type: str = "private") -> tuple:
     today = today or (now.date() if now else get_local_now().date())
     raw = (text or "").strip()
     t = raw.lower()
+    n = normalize_cmd(raw)
+    is_cmd = raw.startswith(("/", "."))
+    is_group = chat_type in ("group", "supergroup")
     admin = is_admin(user_id)
     st = _states.get(user_id, {})
 
     def to_menu(msg: str):
         _states[user_id] = {"mode": "admin_menu"}
-        return msg + "\n\n" + ADMIN_MENU_TEXT, ADMIN_KEYBOARD
+        return msg + "\n\n" + ADMIN_MENU_TEXT, inline_admin()
 
     # --- admin FSM ---
     if admin and st.get("mode"):
         mode = st["mode"]
-        if t in ("отмена", "🚪 выйти", "выйти", "/cancel"):
+        if n in ("отмена", "🚪 выйти", "выйти", "cancel"):
             _states.pop(user_id, None)
             return "🚪 Вышел из админки.", get_keyboard(user_id)
         if mode == "admin_menu":
-            if t in ("➕ дз", "добавить дз", "➕", "д3"):
+            if n in ("➕ дз", "добавить дз", "➕", "д3"):
                 _states[user_id] = {"mode": "hw_subject"}
-                return "📝 Напиши <b>предмет</b> (например: Монтаж):", ADMIN_KEYBOARD
-            if t in ("🗑 дз", "удалить дз", "удалить"):
+                return "📝 Напиши <b>предмет</b> (например: Монтаж):", inline_admin()
+            if n in ("🗑 дз", "удалить дз", "удалить"):
                 if not _data["homework"]:
                     return to_menu("Домашки нет — удалять нечего.")
                 _states[user_id] = {"mode": "hw_delete"}
-                return hw_list_text() + "\n\nНапиши <b>номер</b> для удаления (например: 3):", ADMIN_KEYBOARD
-            if t in ("❌ отмена пары", "отмена пары"):
+                return hw_list_text() + "\n\nНапиши <b>номер</b> для удаления (например: 3):", inline_admin()
+            if n in ("❌ отмена пары", "отмена пары"):
                 _states[user_id] = {"mode": "ov_date_cancel"}
-                return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", ADMIN_KEYBOARD
-            if t in ("✏️ замена", "замена", "замена пары"):
+                return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", inline_admin()
+            if n in ("✏️ замена", "замена", "замена пары"):
                 _states[user_id] = {"mode": "ov_date_replace"}
-                return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", ADMIN_KEYBOARD
-            if t in ("📅 выходной", "выходной", "день выходной"):
+                return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", inline_admin()
+            if n in ("📅 выходной", "выходной", "день выходной"):
                 _states[user_id] = {"mode": "ov_date_off"}
-                return "Напиши <b>дату</b> выходного: Сегодня / Завтра / ДД.ММ:", ADMIN_KEYBOARD
-            if t in ("↩️ сброс", "сброс", "сброс дня"):
+                return "Напиши <b>дату</b> выходного: Сегодня / Завтра / ДД.ММ:", inline_admin()
+            if n in ("↩️ сброс", "сброс", "сброс дня"):
                 _states[user_id] = {"mode": "ov_date_reset"}
-                return "Напиши <b>дату</b> для сброса: Сегодня / Завтра / ДД.ММ:", ADMIN_KEYBOARD
-            if t in ("📋 правки", "правки", "показать правки"):
+                return "Напиши <b>дату</b> для сброса: Сегодня / Завтра / ДД.ММ:", inline_admin()
+            if n in ("📋 правки", "правки", "показать правки"):
                 return to_menu(list_overrides_text())
-            return ADMIN_MENU_TEXT, ADMIN_KEYBOARD
+            return ADMIN_MENU_TEXT, inline_admin()
         if mode == "hw_subject":
             if not raw:
-                return "Пусто. Напиши предмет:", ADMIN_KEYBOARD
+                return "Пусто. Напиши предмет:", inline_admin()
             _states[user_id] = {"mode": "hw_text", "subject": raw}
-            return f"Предмет: <b>{raw}</b>\nТеперь напиши <b>текст домашки</b>:", ADMIN_KEYBOARD
+            return f"Предмет: <b>{raw}</b>\nТеперь напиши <b>текст домашки</b>:", inline_admin()
         if mode == "hw_text":
             hid = hw_add(st.get("subject", "Без предмета"), raw)
             return to_menu(f"✅ Домашка <b>#{hid}</b> добавлена.")
@@ -407,37 +443,37 @@ def process_message(user_id: int, text: str, today: date | None = None,
             import re
             m = re.search(r"\d+", t)
             if not m:
-                return "Нужен номер. Например: 3", ADMIN_KEYBOARD
+                return "Нужен номер. Например: 3", inline_admin()
             ok = hw_delete(int(m.group()))
             return to_menu("✅ Удалено." if ok else "❌ Нет домашки с таким номером.")
         if mode == "ov_date_cancel":
             d = parse_day(raw, today)
             if not d:
-                return "Не понял дату. Напиши: Сегодня / Завтра / ДД.ММ", ADMIN_KEYBOARD
+                return "Не понял дату. Напиши: Сегодня / Завтра / ДД.ММ", inline_admin()
             lessons, _ = get_lessons_for_date(d)
             if not lessons:
                 return to_menu(f"{d.strftime('%d.%m')} — пар и так нет.")
             _states[user_id] = {"mode": "ov_pair_cancel", "day": d.isoformat()}
             pairs = "\n".join(f"• {fmt_lesson_short(l)}" for l in lessons)
-            return f"📅 {d.strftime('%d.%m')}:\n{pairs}\n\nНапиши <b>номер пары</b> для отмены:", ADMIN_KEYBOARD
+            return f"📅 {d.strftime('%d.%m')}:\n{pairs}\n\nНапиши <b>номер пары</b> для отмены:", inline_admin()
         if mode == "ov_pair_cancel":
             import re
             m = re.search(r"\d+", t)
             if not m:
-                return "Нужен номер пары. Например: 4", ADMIN_KEYBOARD
+                return "Нужен номер пары. Например: 4", inline_admin()
             d = date.fromisoformat(st["day"])
             ok = remove_pair_for_date(d, int(m.group()))
             return to_menu(f"✅ Пара отменена на {d.strftime('%d.%m')}." if ok else "❌ Такой пары в этот день нет.")
         if mode == "ov_date_off":
             d = parse_day(raw, today)
             if not d:
-                return "Не понял дату. Напиши: Сегодня / Завтра / ДД.ММ", ADMIN_KEYBOARD
+                return "Не понял дату. Напиши: Сегодня / Завтра / ДД.ММ", inline_admin()
             set_day_override(d, [])
             return to_menu(f"✅ {d.strftime('%d.%m')} — выходной.")
         if mode == "ov_date_reset":
             d = parse_day(raw, today)
             if not d:
-                return "Не понял дату. Напиши: Сегодня / Завтра / ДД.ММ", ADMIN_KEYBOARD
+                return "Не понял дату. Напиши: Сегодня / Завтра / ДД.ММ", inline_admin()
             clear_day_override(d)
             if d.isoformat() in DEFAULT_OVERRIDES:
                 return to_menu(f"↩️ {d.strftime('%d.%m')} — сброс к авто-правке (см. 📋 Правки).")
@@ -445,85 +481,147 @@ def process_message(user_id: int, text: str, today: date | None = None,
         if mode == "ov_date_replace":
             d = parse_day(raw, today)
             if not d:
-                return "Не понял дату. Напиши: Сегодня / Завтра / ДД.ММ", ADMIN_KEYBOARD
+                return "Не понял дату. Напиши: Сегодня / Завтра / ДД.ММ", inline_admin()
             lessons, _ = get_lessons_for_date(d)
             _states[user_id] = {"mode": "ov_pair_replace", "day": d.isoformat()}
             pairs = "\n".join(f"• {fmt_lesson_short(l)}" for l in lessons) or "пар нет"
-            return f"📅 {d.strftime('%d.%m')}:\n{pairs}\n\nНапиши <b>номер пары</b> для замены/создания:", ADMIN_KEYBOARD
+            return f"📅 {d.strftime('%d.%m')}:\n{pairs}\n\nНапиши <b>номер пары</b> для замены/создания:", inline_admin()
         if mode == "ov_pair_replace":
             import re
             m = re.search(r"\d+", t)
             if not m:
-                return "Нужен номер пары. Например: 3", ADMIN_KEYBOARD
+                return "Нужен номер пары. Например: 3", inline_admin()
             _states[user_id] = {"mode": "ov_pair_new", "day": st["day"], "pair": int(m.group())}
             return ("Напиши замену в формате:\n<b>Дисциплина | Преподаватель | Аудитория</b>\n"
-                    "Например: Электротехника (пр) | Баранова С.К. | Э-3"), ADMIN_KEYBOARD
+                    "Например: Электротехника (пр) | Баранова С.К. | Э-3"), inline_admin()
         if mode == "ov_pair_new":
             parts = [p.strip() for p in raw.split("|")]
             if len(parts) != 3 or not all(parts):
-                return "Формат: <b>Дисциплина | Преподаватель | Аудитория</b>", ADMIN_KEYBOARD
+                return "Формат: <b>Дисциплина | Преподаватель | Аудитория</b>", inline_admin()
             d = date.fromisoformat(st["day"])
             replace_pair_for_date(d, st["pair"], parts[0], parts[1], parts[2])
             return to_menu(f"✅ {d.strftime('%d.%m')}, {st['pair']} пара — обновлена.")
 
+    # --- в группах реагируем только на команды (/... или ....), иначе игнор ---
+    if is_group and not is_cmd:
+        return None, None
+
     # --- вход в админку ---
-    if t in ("/admin", "⚙️ админка", "админка", "админ"):
+    if n in ("admin", "⚙️ админка", "админка", "админ"):
         if not admin:
             return "⛔ Нет доступа.", get_keyboard(user_id)
         _states[user_id] = {"mode": "admin_menu"}
-        return ADMIN_MENU_TEXT, ADMIN_KEYBOARD
+        return ADMIN_MENU_TEXT, inline_admin()
 
     # --- прямые команды админки без входа в меню ---
     if admin and not st.get("mode"):
-        if t in ("➕ дз", "добавить дз", "➕"):
+        if n in ("➕ дз", "добавить дз", "➕"):
             _states[user_id] = {"mode": "hw_subject"}
-            return "📝 Напиши <b>предмет</b> (например: Монтаж):", ADMIN_KEYBOARD
-        if t in ("🗑 дз", "удалить дз", "удалить"):
+            return "📝 Напиши <b>предмет</b> (например: Монтаж):", inline_admin()
+        if n in ("🗑 дз", "удалить дз", "удалить"):
             if not _data["homework"]:
                 return "Домашки нет — удалять нечего.", get_keyboard(user_id)
             _states[user_id] = {"mode": "hw_delete"}
-            return hw_list_text() + "\n\nНапиши <b>номер</b> для удаления (например: 3):", ADMIN_KEYBOARD
-        if t in ("❌ отмена пары", "отмена пары"):
+            return hw_list_text() + "\n\nНапиши <b>номер</b> для удаления (например: 3):", inline_admin()
+        if n in ("❌ отмена пары", "отмена пары"):
             _states[user_id] = {"mode": "ov_date_cancel"}
-            return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", ADMIN_KEYBOARD
-        if t in ("✏️ замена", "замена", "замена пары"):
+            return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", inline_admin()
+        if n in ("✏️ замена", "замена", "замена пары"):
             _states[user_id] = {"mode": "ov_date_replace"}
-            return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", ADMIN_KEYBOARD
-        if t in ("📅 выходной", "выходной", "день выходной"):
+            return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", inline_admin()
+        if n in ("📅 выходной", "выходной", "день выходной"):
             _states[user_id] = {"mode": "ov_date_off"}
-            return "Напиши <b>дату</b> выходного: Сегодня / Завтра / ДД.ММ:", ADMIN_KEYBOARD
-        if t in ("↩️ сброс", "сброс", "сброс дня"):
+            return "Напиши <b>дату</b> выходного: Сегодня / Завтра / ДД.ММ:", inline_admin()
+        if n in ("↩️ сброс", "сброс", "сброс дня"):
             _states[user_id] = {"mode": "ov_date_reset"}
-            return "Напиши <b>дату</b> для сброса: Сегодня / Завтра / ДД.ММ:", ADMIN_KEYBOARD
-        if t in ("📋 правки", "правки", "показать правки"):
+            return "Напиши <b>дату</b> для сброса: Сегодня / Завтра / ДД.ММ:", inline_admin()
+        if n in ("📋 правки", "правки", "показать правки"):
             return list_overrides_text(), get_keyboard(user_id)
 
     # --- обычные команды ---
-    if t in ("/start", "старт", "привет"):
+    if n in ("start", "старт", "привет"):
         txt = ("👋 Привет! Я бот группы <b>ФТ24АР52ЭО</b>\n\n"
                "Что умею:\n📅 <b>Сегодня</b> — пары на сегодня\n📅 <b>Завтра</b> — пары на завтра\n"
                "🔢 <b>Неделя</b> — числитель или знаменатель\n⏰ <b>Сейчас</b> — какая пара идет\n"
-               "🗓 <b>Расписание</b> — вся неделя\n📝 <b>Д/З</b> — домашка\n\nЖми кнопку ниже ⬇️")
+               "🗓 <b>Расписание</b> — вся неделя\n📝 <b>Д/З</b> — домашка\n\n"
+               "В группе пиши с точкой: <b>.завтра</b>, <b>.сейчас</b> — или жми кнопки ⬇️")
         return txt, get_keyboard(user_id, bool(st.get("mode")))
-    if t in ("/help", "помощь", "help"):
-        return "Команды: /today /tomorrow /week /now /schedule /hw\nКнопки: Сегодня, Завтра, Неделя, Сейчас, Расписание, 📝 Д/З", get_keyboard(user_id, bool(st.get("mode")))
-    if t in ("/week", "неделя", "числитель", "знаменатель"):
+    if n in ("help", "помощь", "хелп"):
+        return ("В личке можно просто: Сегодня, Завтра, Неделя, Сейчас, Расписание, Д/З\n"
+                "В группе — с точкой: <b>.сегодня .завтра .неделя .сейчас .расписание .дз</b>\n"
+                "Слэш тоже работает: /today /tomorrow /week /now /schedule /hw",
+                get_keyboard(user_id, bool(st.get("mode"))))
+    if n in ("week", "неделя", "числитель", "знаменатель"):
         wt = get_week_type(today)
         badge = "🔴 <b>ЧИСЛИТЕЛЬ</b> (нечетная)" if wt == "числитель" else "🔵 <b>ЗНАМЕНАТЕЛЬ</b> (четная)"
         return f"📅 Сегодня <b>{today.strftime('%d.%m.%Y')}</b>\n{badge}", get_keyboard(user_id, bool(st.get("mode")))
-    if t in ("/today", "сегодня"):
+    if n in ("today", "сегодня", "седня"):
         return get_schedule_text(today), get_keyboard(user_id, bool(st.get("mode")))
-    if t in ("/tomorrow", "завтра"):
+    if n in ("tomorrow", "tomorow", "завтра"):
         return get_schedule_text(today + timedelta(days=1)), get_keyboard(user_id, bool(st.get("mode")))
-    if t in ("/now", "сейчас", "пара", "какая пара", "что сейчас", "щас", "ща"):
+    if n in ("now", "сейчас", "пара", "какая пара", "что сейчас", "щас", "ща"):
         return get_now_status(today, now), get_keyboard(user_id, bool(st.get("mode")))
-    if t in ("/schedule", "расписание", "все", "вся неделя", "на неделю"):
+    if n in ("schedule", "расписание", "все", "вся неделя", "на неделю"):
         return get_week_schedule_text(today), get_keyboard(user_id, bool(st.get("mode")))
-    if t in ("/hw", "📝 д/з", "д/з", "дз", "домашка", "домашнее задание", "д/з 📝"):
+    if n in ("hw", "📝 д/з", "д/з", "дз", "домашка", "домашнее задание", "д/з 📝"):
         return hw_list_text(), get_keyboard(user_id, bool(st.get("mode")))
     return "🤔 Не понял\nНапиши: <b>Сегодня</b>, <b>Завтра</b>, <b>Неделя</b>, <b>Сейчас</b>, <b>Расписание</b> или <b>📝 Д/З</b>", get_keyboard(user_id, bool(st.get("mode")))
 
 
+def process_callback(user_id: int, data: str, today: date | None = None,
+                     now: datetime | None = None) -> tuple:
+    """Нажатие inline-кнопки -> (текст, inline-клавиатура)."""
+    today = today or (now.date() if now else get_local_now().date())
+    d = (data or "").strip()
+    admin = is_admin(user_id)
+
+    main = {
+        "cmd:today": lambda: (get_schedule_text(today), get_keyboard(user_id)),
+        "cmd:tomorrow": lambda: (get_schedule_text(today + timedelta(days=1)), get_keyboard(user_id)),
+        "cmd:week": lambda: process_message(user_id, "неделя", today, now, "private"),
+        "cmd:now": lambda: (get_now_status(today, now), get_keyboard(user_id)),
+        "cmd:schedule": lambda: (get_week_schedule_text(today), get_keyboard(user_id)),
+        "cmd:hw": lambda: (hw_list_text(), get_keyboard(user_id)),
+    }
+    if d in main:
+        return main[d]()
+
+    if d == "adm:menu":
+        if not admin:
+            return "⛔ Нет доступа.", inline_main(user_id)
+        _states[user_id] = {"mode": "admin_menu"}
+        return ADMIN_MENU_TEXT, inline_admin()
+    if d == "adm:exit":
+        _states.pop(user_id, None)
+        return "🚪 Вышел из админки.", get_keyboard(user_id)
+    if not admin:
+        return "⛔ Нет доступа.", inline_main(user_id)
+    if d == "adm:hw_add":
+        _states[user_id] = {"mode": "hw_subject"}
+        return "📝 Напиши <b>предмет</b> (например: Монтаж):", inline_admin()
+    if d == "adm:hw_del":
+        if not _data["homework"]:
+            return "Домашки нет — удалять нечего.", inline_admin()
+        _states[user_id] = {"mode": "hw_delete"}
+        return hw_list_text() + "\n\nНапиши <b>номер</b> для удаления:", inline_admin()
+    if d == "adm:cancel":
+        _states[user_id] = {"mode": "ov_date_cancel"}
+        return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", inline_admin()
+    if d == "adm:replace":
+        _states[user_id] = {"mode": "ov_date_replace"}
+        return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", inline_admin()
+    if d == "adm:off":
+        _states[user_id] = {"mode": "ov_date_off"}
+        return "Напиши <b>дату</b> выходного: Сегодня / Завтра / ДД.ММ:", inline_admin()
+    if d == "adm:reset":
+        _states[user_id] = {"mode": "ov_date_reset"}
+        return "Напиши <b>дату</b> для сброса: Сегодня / Завтра / ДД.ММ:", inline_admin()
+    if d == "adm:list":
+        _states[user_id] = {"mode": "admin_menu"}
+        return list_overrides_text() + "\n\n" + ADMIN_MENU_TEXT, inline_admin()
+    return "🤔 Неизвестная кнопка.", get_keyboard(user_id)
+
+
 def handle_text(text: str, today: date | None = None, now: datetime | None = None) -> str:
     txt, _ = process_message(0, text, today, now)
-    return txt
+    return txt or ""
