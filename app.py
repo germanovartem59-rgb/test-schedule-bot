@@ -259,10 +259,17 @@ INDEX_HTML = """<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><meta
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>PhoneMarket — панель барахолки</title><script src="https://cdn.tailwindcss.com"></script>
-<style>body{font-family:Inter,system-ui} .glass{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);backdrop-filter:blur(14px)} .navbtn.on{background:linear-gradient(90deg,#6366f1,#22d3ee);color:#fff} input,textarea,select{font-size:16px!important} button{min-height:40px} ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#334155;border-radius:8px}</style></head>
+<style>body{font-family:Inter,system-ui} .glass{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);backdrop-filter:blur(14px)} .navbtn.on{background:linear-gradient(90deg,#6366f1,#22d3ee);color:#fff} input,textarea,select{font-size:16px!important} button{min-height:40px} ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#334155;border-radius:8px}
+/* мобильное меню на собственном CSS — работает даже если CDN не загрузился */
+#drawer{transform:translateX(-105%);transition:transform .3s ease}
+#drawer.open{transform:none}
+#overlay{display:none}
+#overlay.show{display:block}
+@media (max-width:767px){#side{display:none!important}}
+@media (min-width:768px){#mtop,#drawer,#overlay{display:none!important}}</style></head>
 <body class="min-h-screen text-slate-100" style="background:radial-gradient(1000px 500px at 10% 0%,#4f46e522,transparent),radial-gradient(900px 500px at 100% 100%,#06b6d422,transparent),#0b1020">
 <div class="flex min-h-screen">
-<aside class="w-60 shrink-0 p-4 hidden md:flex flex-col gap-2">
+<aside id="side" class="w-60 shrink-0 p-4 hidden md:flex flex-col gap-2">
 <div class="text-2xl font-black px-2 py-3">📱 Phone<span class="text-indigo-400">Market</span></div>
 <button data-tab="dash" class="navbtn on text-left px-4 py-2.5 rounded-xl hover:bg-white/5">📊 Дашборд</button>
 <button data-tab="phones" class="navbtn text-left px-4 py-2.5 rounded-xl hover:bg-white/5">📦 Каталог</button>
@@ -273,12 +280,12 @@ INDEX_HTML = """<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><meta
 <div class="mt-auto text-xs text-slate-500 px-2">Юзербот · супергруппы<br><a href="/logout" class="underline">выйти</a></div>
 </aside>
 <main class="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full">
-<div class="md:hidden sticky top-0 z-40 flex items-center gap-2 px-1 py-2 mb-4 bg-[#0b1020]/95 backdrop-blur border-b border-white/10" style="padding-top:env(safe-area-inset-top)">
+<div id="mtop" class="md:hidden sticky top-0 z-40 flex items-center gap-2 px-1 py-2 mb-4 bg-[#0b1020]/95 backdrop-blur border-b border-white/10" style="padding-top:env(safe-area-inset-top)">
 <button onclick="openDrawer()" aria-label="Меню" class="text-2xl leading-none px-3 py-2 rounded-xl bg-white/5 border border-white/10">☰</button>
 <div class="font-black text-lg">📱 Phone<span class="text-indigo-400">Market</span></div>
 </div>
-<div id="overlay" onclick="closeDrawer()" class="md:hidden fixed inset-0 z-40 bg-black/60 hidden"></div>
-<aside id="drawer" class="md:hidden fixed top-0 left-0 bottom-0 z-50 w-64 bg-[#0f172a] border-r border-white/10 p-4 flex-col gap-2 transition-transform duration-300 -translate-x-full flex" style="padding-top:env(safe-area-inset-top)">
+<div id="overlay" onclick="closeDrawer()" class="md:hidden fixed inset-0 z-40 bg-black/60"></div>
+<aside id="drawer" class="md:hidden fixed top-0 left-0 bottom-0 z-50 w-64 bg-[#0f172a] border-r border-white/10 p-4 flex-col gap-2 flex" style="padding-top:env(safe-area-inset-top)">
 <div class="text-xl font-black px-2 py-3">📱 Phone<span class="text-indigo-400">Market</span></div>
 <button onclick="show('dash')" class="text-left px-4 py-3 rounded-xl bg-white/5">📊 Дашборд</button>
 <button onclick="show('phones')" class="text-left px-4 py-3 rounded-xl bg-white/5">📦 Каталог</button>
@@ -365,8 +372,8 @@ INDEX_HTML = """<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><meta
 let PHONES=[],GROUPS=[],SEL_PHONE=null,SEL_GROUPS=new Set();
 const $=id=>document.getElementById(id);
 document.querySelectorAll('.navbtn').forEach(b=>b.onclick=()=>show(b.dataset.tab));
-function openDrawer(){$('drawer').classList.remove('-translate-x-full');$('overlay').classList.remove('hidden');}
-function closeDrawer(){const d=$('drawer');if(d)d.classList.add('-translate-x-full');const o=$('overlay');if(o)o.classList.add('hidden');}
+function openDrawer(){$('drawer').classList.add('open');$('overlay').classList.add('show');}
+function closeDrawer(){const d=$('drawer');if(d)d.classList.remove('open');const o=$('overlay');if(o)o.classList.remove('show');}
 function show(t){closeDrawer();document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));['dash','phones','groups','send','logs','settings'].forEach(k=>$('tab-'+k).classList.toggle('hidden',k!==t));if(t==='logs')loadLogs();window.scrollTo(0,0);}
 async function j(u,o){const r=await fetch(u,o);if(r.status===401){location='/login';return{}}return r.json();}
 async function load(){const s=await j('/api/stats');if(!s.ok)return;$('stPhones').textContent=s.phones;$('stGroups').textContent=s.groups;$('stToday').textContent=s.today;$('stErr').textContent=s.errors;$('lastPosts').innerHTML=(s.posts||[]).map(p=>`<div class="flex justify-between bg-black/30 rounded-lg px-3 py-2"><span>📱 ${p.phone_title} → ${p.group_name}</span><span class="${p.status==='ok'?'text-emerald-400':'text-rose-400'}">${p.status==='ok'?'✓':'✗ '+(p.error||'').slice(0,60)}</span></div>`).join('')||'Пока пусто';
