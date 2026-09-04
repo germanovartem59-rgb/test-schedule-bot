@@ -18,8 +18,29 @@ def api(token: str, method: str, payload: dict):
         return {}
 
 
-def show(token: str, chat_id: int, text: str, kb, edit_id: int | None = None):
-    """Показать сообщение: отредактировать старое или отправить новое."""
+def delete_prev(token: str, chat_id: int):
+    mid = _last_bot_msg.get(chat_id)
+    if not mid:
+        return
+    try:
+        requests.post(
+            API.format(token=token, method="deleteMessage"),
+            json={"chat_id": chat_id, "message_id": mid},
+            timeout=10,
+        )
+    except Exception:
+        pass
+    _last_bot_msg.pop(chat_id, None)
+
+
+def show_new(token: str, chat_id: int, text: str, kb):
+    """Команда текстом: удалить прошлое сообщение бота и отправить новое снизу."""
+    delete_prev(token, chat_id)
+    show_edit(token, chat_id, text, kb, edit_id=None)
+
+
+def show_edit(token: str, chat_id: int, text: str, kb, edit_id: int | None = None):
+    """Нажатие кнопки: отредактировать сообщение на месте."""
     markup = {"inline_keyboard": kb} if kb else None
     mid = edit_id or _last_bot_msg.get(chat_id)
     if mid:
@@ -82,7 +103,7 @@ def run_polling(token: str):
                     api(token, "answerCallbackQuery", {"callback_query_id": cb.get("id")})
                     if chat_id:
                         answer, kb = process_callback(user.get("id", 0), cb.get("data", ""))
-                        show(token, chat_id, answer, kb, edit_id=mid)
+                        show_edit(token, chat_id, answer, kb, edit_id=mid)
                     continue
                 # --- обычное сообщение ---
                 msg = upd.get("message", {})
@@ -98,7 +119,7 @@ def run_polling(token: str):
                     low = text.strip().lower().lstrip("./").split("@")[0]
                     if low in ("start", "старт", "привет"):
                         clear_old_keyboard(token, chat_id)
-                    show(token, chat_id, answer, kb)
+                    show_new(token, chat_id, answer, kb)
         except Exception as e:
             print("Ошибка:", e)
             time.sleep(3)
