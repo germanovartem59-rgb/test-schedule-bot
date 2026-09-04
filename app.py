@@ -272,16 +272,22 @@ INDEX_HTML = """<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><meta
 <button data-tab="settings" class="navbtn text-left px-4 py-2.5 rounded-xl hover:bg-white/5">⚙️ Настройки</button>
 <div class="mt-auto text-xs text-slate-500 px-2">Юзербот · супергруппы<br><a href="/logout" class="underline">выйти</a></div>
 </aside>
-<main class="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full pb-32 md:pb-8">
-<nav class="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f172a]/95 backdrop-blur border-t border-white/10" style="padding-bottom:env(safe-area-inset-bottom)">
-<div class="grid grid-cols-6 px-1 pt-1.5">
-<button data-mtab="dash" onclick="show('dash')" class="flex flex-col items-center gap-0.5 py-1.5 text-[10px] leading-none">📊<span>Главная</span></button>
-<button data-mtab="phones" onclick="show('phones')" class="flex flex-col items-center gap-0.5 py-1.5 text-[10px] leading-none">📦<span>Каталог</span></button>
-<button data-mtab="groups" onclick="show('groups')" class="flex flex-col items-center gap-0.5 py-1.5 text-[10px] leading-none">👥<span>Группы</span></button>
-<button data-mtab="send" onclick="show('send')" class="flex flex-col items-center gap-0.5 py-1.5 text-[10px] leading-none">🚀<span>Пост</span></button>
-<button data-mtab="logs" onclick="show('logs')" class="flex flex-col items-center gap-0.5 py-1.5 text-[10px] leading-none">🧾<span>Лог</span></button>
-<button data-mtab="settings" onclick="show('settings')" class="flex flex-col items-center gap-0.5 py-1.5 text-[10px] leading-none">⚙️<span>Настр.</span></button>
-</div></nav>
+<main class="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full">
+<div class="md:hidden sticky top-0 z-40 flex items-center gap-2 px-1 py-2 mb-4 bg-[#0b1020]/95 backdrop-blur border-b border-white/10" style="padding-top:env(safe-area-inset-top)">
+<button onclick="openDrawer()" aria-label="Меню" class="text-2xl leading-none px-3 py-2 rounded-xl bg-white/5 border border-white/10">☰</button>
+<div class="font-black text-lg">📱 Phone<span class="text-indigo-400">Market</span></div>
+</div>
+<div id="overlay" onclick="closeDrawer()" class="md:hidden fixed inset-0 z-40 bg-black/60 hidden"></div>
+<aside id="drawer" class="md:hidden fixed top-0 left-0 bottom-0 z-50 w-64 bg-[#0f172a] border-r border-white/10 p-4 flex-col gap-2 transition-transform duration-300 -translate-x-full flex" style="padding-top:env(safe-area-inset-top)">
+<div class="text-xl font-black px-2 py-3">📱 Phone<span class="text-indigo-400">Market</span></div>
+<button onclick="show('dash')" class="text-left px-4 py-3 rounded-xl bg-white/5">📊 Дашборд</button>
+<button onclick="show('phones')" class="text-left px-4 py-3 rounded-xl bg-white/5">📦 Каталог</button>
+<button onclick="show('groups')" class="text-left px-4 py-3 rounded-xl bg-white/5">👥 Группы</button>
+<button onclick="show('send')" class="text-left px-4 py-3 rounded-xl bg-white/5">🚀 Рассылка</button>
+<button onclick="show('logs')" class="text-left px-4 py-3 rounded-xl bg-white/5">🧾 История</button>
+<button onclick="show('settings')" class="text-left px-4 py-3 rounded-xl bg-white/5">⚙️ Настройки</button>
+<div class="mt-auto text-xs text-slate-500 px-2"><a href="/logout" class="underline">выйти</a></div>
+</aside>
 
 <section id="tab-dash">
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -359,7 +365,9 @@ INDEX_HTML = """<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><meta
 let PHONES=[],GROUPS=[],SEL_PHONE=null,SEL_GROUPS=new Set();
 const $=id=>document.getElementById(id);
 document.querySelectorAll('.navbtn').forEach(b=>b.onclick=()=>show(b.dataset.tab));
-function show(t){document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));document.querySelectorAll('[data-mtab]').forEach(b=>{b.style.color=b.dataset.mtab===t?'#67e8f9':'#94a3b8';});['dash','phones','groups','send','logs','settings'].forEach(k=>$('tab-'+k).classList.toggle('hidden',k!==t));if(t==='logs')loadLogs();window.scrollTo(0,0);}
+function openDrawer(){$('drawer').classList.remove('-translate-x-full');$('overlay').classList.remove('hidden');}
+function closeDrawer(){const d=$('drawer');if(d)d.classList.add('-translate-x-full');const o=$('overlay');if(o)o.classList.add('hidden');}
+function show(t){closeDrawer();document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));['dash','phones','groups','send','logs','settings'].forEach(k=>$('tab-'+k).classList.toggle('hidden',k!==t));if(t==='logs')loadLogs();window.scrollTo(0,0);}
 async function j(u,o){const r=await fetch(u,o);if(r.status===401){location='/login';return{}}return r.json();}
 async function load(){const s=await j('/api/stats');if(!s.ok)return;$('stPhones').textContent=s.phones;$('stGroups').textContent=s.groups;$('stToday').textContent=s.today;$('stErr').textContent=s.errors;$('lastPosts').innerHTML=(s.posts||[]).map(p=>`<div class="flex justify-between bg-black/30 rounded-lg px-3 py-2"><span>📱 ${p.phone_title} → ${p.group_name}</span><span class="${p.status==='ok'?'text-emerald-400':'text-rose-400'}">${p.status==='ok'?'✓':'✗ '+(p.error||'').slice(0,60)}</span></div>`).join('')||'Пока пусто';
 const ph=await j('/api/phones');PHONES=ph.items||[];renderPhones();const g=await j('/api/groups');GROUPS=g.items||[];renderGroups();const st=await j('/api/settings');fillSettings(st.settings||{});}
@@ -383,7 +391,7 @@ async function loadLogs(){const r=await j('/api/logs');$('logList').innerHTML=(r
 function fillSettings(s){$('sContact').value=s.contact||'';$('sCity').value=s.city||'';$('sDelay2').value=s.delay_sec||15;$('sInterval').value=s.autopost_interval_min||60;$('sSign').value=s.signature||'';$('sTpl').value=s.template||'';$('sAuto').checked=s.autopost_on==='1';}
 async function saveSettings(){const r=await j('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contact:$('sContact').value,city:$('sCity').value,delay_sec:$('sDelay2').value,autopost_interval_min:$('sInterval').value,signature:$('sSign').value,template:$('sTpl').value,autopost_on:$('sAuto').checked?'1':'0'})});$('setMsg').textContent=r.ok?'✅ Сохранено':'❌ Ошибка';}
 async function checkTg(){$('tgStatus').textContent='⏳ Проверяю...';const r=await j('/api/check-tg',{method:'POST'});$('tgStatus').innerHTML=r.ok?`✅ Подключено как <b>${r.name}</b>`:`❌ ${r.error||'ошибка'} <br><span class="text-xs">Получи API_ID/HASH на my.telegram.org, SESSION_STRING через gen_session.py</span>`;}
-load();show('dash');
+load();
 </script></body></html>"""
 
 if __name__ == "__main__":
