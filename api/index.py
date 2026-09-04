@@ -23,7 +23,16 @@ def api_call(method: str, payload: dict):
         return {}
 
 
-def show(chat_id: int, text: str, kb, edit_id: int | None = None):
+def show_new(chat_id: int, text: str, kb):
+    """Команда текстом: удалить прошлое сообщение бота и отправить новое снизу."""
+    prev = _last_bot_msg.pop(chat_id, None)
+    if prev:
+        api_call("deleteMessage", {"chat_id": chat_id, "message_id": prev})
+    show_edit(chat_id, text, kb, edit_id=None)
+
+
+def show_edit(chat_id: int, text: str, kb, edit_id: int | None = None):
+    """Нажатие кнопки: отредактировать сообщение на месте."""
     markup = {"inline_keyboard": kb} if kb else None
     mid = edit_id or _last_bot_msg.get(chat_id)
     if mid:
@@ -77,7 +86,7 @@ def webhook():
         api_call("answerCallbackQuery", {"callback_query_id": cb.get("id")})
         if chat_id:
             answer, kb = process_callback(user.get("id", 0), cb.get("data", ""))
-            show(chat_id, answer, kb, edit_id=mid)
+            show_edit(chat_id, answer, kb, edit_id=mid)
         return jsonify(ok=True)
     # --- обычное сообщение ---
     msg = upd.get("message", {})
@@ -92,5 +101,5 @@ def webhook():
             low = text.strip().lower().lstrip("./").split("@")[0]
             if low in ("start", "старт", "привет"):
                 clear_old_keyboard(chat_id)
-            show(chat_id, answer, kb)
+            show_new(chat_id, answer, kb)
     return jsonify(ok=True)
