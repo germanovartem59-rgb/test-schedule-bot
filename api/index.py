@@ -1,29 +1,40 @@
-"""Webhook-версия для бесплатного хостинга Vercel."""
+"""Webhook-версия для хостинга Render."""
 import os
 import sys
 import requests
 from flask import Flask, request, jsonify
 
-# чтобы импортировался schedule_logic.py из корня проекта
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from schedule_logic import handle_text
+from schedule_logic import process_message
 
 app = Flask(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 API = "https://api.telegram.org/bot{token}/{method}"
+_last_bot_msg: dict[int, int] = {}
 
 
-def send_message(chat_id: int, text: str):
-    keyboard = {
-        "keyboard": [["Сегодня", "Завтра"], ["Неделя", "Сейчас"], ["Расписание"]],
-        "resize_keyboard": True,
-    }
-    requests.post(
-        API.format(token=BOT_TOKEN, method="sendMessage"),
-        json={"chat_id": chat_id, "text": text, "reply_markup": keyboard, "parse_mode": "HTML"},
-        timeout=15,
-    )
+def api_call(method: str, payload: dict):
+    try:
+        return requests.post(
+            API.format(token=BOT_TOKEN, method=method), json=payload, timeout=15
+        ).json()
+    except Exception:
+        return {}
+
+
+def send_message(chat_id: int, text: str, keyboard):
+    prev = _last_bot_msg.get(chat_id)
+    if prev:
+        api_call("deleteMessage", {"chat_id": chat_id, "message_id": prev})
+    kb = {"keyboard": keyboard, "resize_keyboard": True}
+    r = api_call("sendMessage", {
+        "chat_id": chat_id, "text": text,
+        "reply_markup": kb, "parse_mode": "HTML",
+    })
+    mid = (r.get("result") or {}).get("message_id")
+    if mid:
+        _last_bot_msg[chat_id] = mid
 
 
 @app.get("/")
@@ -36,7 +47,11 @@ def webhook():
     upd = request.get_json(force=True, silent=True) or {}
     msg = upd.get("message", {})
     text = msg.get("text", "")
-    chat_id = msg.get("chat", {}).get("id")
+    chat = msg.get("chat", {}) or {}
+    chat_id = chat.get("id")
+    user = msg.get("from", {}) or {}
+    user_id = user.get("id", 0)
     if chat_id and text and BOT_TOKEN:
-        send_message(chat_id, handle_text(text))
+        answer, kb = process_message(user_id, text)
+        send_message(chat_id, answer, kb)
     return jsonify(ok=True)
