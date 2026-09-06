@@ -312,10 +312,12 @@ def list_overrides_text() -> str:
 
 
 def parse_day(text: str, today: date) -> date | None:
-    t = (text or "").strip().lower()
-    if n in ("сегодня", "today"):
+    t = (text or "").strip().lower().lstrip("./")
+    if "@" in t:
+        t = t.split("@", 1)[0]
+    if t in ("сегодня", "today"):
         return today
-    if n in ("завтра", "tomorrow"):
+    if t in ("завтра", "tomorrow"):
         return today + timedelta(days=1)
     # ДД.ММ или ДД.ММ.ГГГГ
     import re
@@ -396,6 +398,8 @@ def process_message(user_id: int, text: str, today: date | None = None,
     is_group = chat_type in ("group", "supergroup")
     admin = is_admin(user_id)
     st = _states.get(user_id, {})
+    # в группе бот слышит только команды с точкой — подсказываем это в админских вопросах
+    dot = " В группе отвечай с точкой: <b>.сегодня</b>" if is_group else ""
 
     def to_menu(msg: str):
         _states[user_id] = {"mode": "admin_menu"}
@@ -418,10 +422,10 @@ def process_message(user_id: int, text: str, today: date | None = None,
                 return hw_list_text() + "\n\nНапиши <b>номер</b> для удаления (например: 3):", inline_admin()
             if n in ("❌ отмена пары", "отмена пары"):
                 _states[user_id] = {"mode": "ov_date_cancel"}
-                return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", inline_admin()
+                return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:" + dot, inline_admin()
             if n in ("✏️ замена", "замена", "замена пары"):
                 _states[user_id] = {"mode": "ov_date_replace"}
-                return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", inline_admin()
+                return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:" + dot, inline_admin()
             if n in ("📅 выходной", "выходной", "день выходной"):
                 _states[user_id] = {"mode": "ov_date_off"}
                 return "Напиши <b>дату</b> выходного: Сегодня / Завтра / ДД.ММ:", inline_admin()
@@ -495,7 +499,7 @@ def process_message(user_id: int, text: str, today: date | None = None,
             return ("Напиши замену в формате:\n<b>Дисциплина | Преподаватель | Аудитория</b>\n"
                     "Например: Электротехника (пр) | Баранова С.К. | Э-3"), inline_admin()
         if mode == "ov_pair_new":
-            parts = [p.strip() for p in raw.split("|")]
+            parts = [p.strip() for p in raw.lstrip("./").split("|")]
             if len(parts) != 3 or not all(parts):
                 return "Формат: <b>Дисциплина | Преподаватель | Аудитория</b>", inline_admin()
             d = date.fromisoformat(st["day"])
@@ -525,10 +529,10 @@ def process_message(user_id: int, text: str, today: date | None = None,
             return hw_list_text() + "\n\nНапиши <b>номер</b> для удаления (например: 3):", inline_admin()
         if n in ("❌ отмена пары", "отмена пары"):
             _states[user_id] = {"mode": "ov_date_cancel"}
-            return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", inline_admin()
+            return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:" + dot, inline_admin()
         if n in ("✏️ замена", "замена", "замена пары"):
             _states[user_id] = {"mode": "ov_date_replace"}
-            return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", inline_admin()
+            return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:" + dot, inline_admin()
         if n in ("📅 выходной", "выходной", "день выходной"):
             _states[user_id] = {"mode": "ov_date_off"}
             return "Напиши <b>дату</b> выходного: Сегодня / Завтра / ДД.ММ:", inline_admin()
@@ -606,10 +610,10 @@ def process_callback(user_id: int, data: str, today: date | None = None,
         return hw_list_text() + "\n\nНапиши <b>номер</b> для удаления:", inline_admin()
     if d == "adm:cancel":
         _states[user_id] = {"mode": "ov_date_cancel"}
-        return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", inline_admin()
+        return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:" + dot, inline_admin()
     if d == "adm:replace":
         _states[user_id] = {"mode": "ov_date_replace"}
-        return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:", inline_admin()
+        return "Напиши <b>дату</b>: Сегодня / Завтра / ДД.ММ:" + dot, inline_admin()
     if d == "adm:off":
         _states[user_id] = {"mode": "ov_date_off"}
         return "Напиши <b>дату</b> выходного: Сегодня / Завтра / ДД.ММ:", inline_admin()
