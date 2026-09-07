@@ -81,6 +81,9 @@ DEFAULT_OVERRIDES = {
 }
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot_data.json")
+# Облачная база для запоминания (Neon Postgres, бесплатно). Если задана —
+# всё хранится в ней и переживает перезапуски; иначе обычный bot_data.json.
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
 # Расписание пересдач с фото (ведомости). Даты в формате ДД.ММ.ГГ.
 RETAKES_DEFAULT = [
@@ -117,16 +120,49 @@ _data = {"overrides": {}, "homework": [], "hw_next_id": 1, "retakes": []}
 _states: dict[int, dict] = {}
 
 
+def _pg_conn():
+    if not DATABASE_URL:
+        return None
+    try:
+        import psycopg
+        return psycopg.connect(DATABASE_URL, connect_timeout=10, autocommit=True)
+    except Exception as e:
+        print("pg unavailable:", str(e)[:150])
+        return None
+
+
+def _pg_init(conn):
+    with conn.cursor() as cur:
+        cur.execute("CREATE TABLE IF NOT EXISTS kv_store (k TEXT PRIMARY KEY, v TEXT NOT NULL)")
+
+
+def _apply_loaded(loaded: dict):
+    _data["overrides"] = loaded.get("overrides", {})
+    _data["homework"] = loaded.get("homework", [])
+    _data["hw_next_id"] = loaded.get("hw_next_id", 1)
+    _data["retakes"] = loaded.get("retakes", [])
+
+
 def _load():
     global _data
+    if DATABASE_URL:
+        try:
+            conn = _pg_conn()
+            if conn:
+                _pg_init(conn)
+                with conn.cursor() as cur:
+                    cur.execute("SELECT v FROM kv_store WHERE k='state'")
+                    row = cur.fetchone()
+                conn.close()
+                if row:
+                    _apply_loaded(json.loads(row[0]))
+                    return
+        except Exception as e:
+            print("pg load failed, file fallback:", str(e)[:150])
     try:
         if os.path.exists(DATA_FILE):
             with open(DATA_FILE, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
-            _data["overrides"] = loaded.get("overrides", {})
-            _data["homework"] = loaded.get("homework", [])
-            _data["hw_next_id"] = loaded.get("hw_next_id", 1)
-            _data["retakes"] = loaded.get("retakes", [])
+                _apply_loaded(json.load(f))
     except Exception:
         pass
 
@@ -137,6 +173,19 @@ def _save():
             json.dump(_data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+    if DATABASE_URL:
+        try:
+            conn = _pg_conn()
+            if conn:
+                _pg_init(conn)
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO kv_store(k,v) VALUES('state',%s) "
+                        "ON CONFLICT(k) DO UPDATE SET v=EXCLUDED.v",
+                        (json.dumps(_data, ensure_ascii=False),))
+                conn.close()
+        except Exception as e:
+            print("pg save failed:", str(e)[:150])
 
 
 _load()
