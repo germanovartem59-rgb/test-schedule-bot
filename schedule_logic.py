@@ -10,6 +10,7 @@ except Exception:
     LOCAL_TZ = None
 
 ADMIN_IDS = [5634691608]
+APP_URL = os.getenv("APP_URL", "").rstrip("/")
 
 # Неделя Пн 31.08 – Вс 06.09 = числитель
 SEMESTER_START = date(2026, 8, 31)
@@ -29,6 +30,10 @@ MON = [
     (3, "Электрические машины и электропривод (лк)", "Боровик Т.И.", "Э* 228а"),
     (4, "МДК.02.01 Планирование работ по эксплуатации (лк)", "Костантиновская А.В.", "Э* 228а"),
 ]
+# С 07.09.2026: 4 пара понедельника-числителя переехала 1 парой в субботу-знаменатель.
+# Пн числителя — только 2 и 3 пары; Пн знаменателя — без изменений.
+MON_NUM = [l for l in MON if l[0] != 4]
+MOVED_TO_SAT = (1, "МДК.02.01 Планирование работ по эксплуатации (лк)", "Костантиновская А.В.", "Э* 221")
 TUE_BASE = [
     (1, "МДК.02.01 Планирование работ по эксплуатации (лк)", "Костантиновская А.В.", "312А К.8"),
     (2, "Физическая культура (пр)", "Выходец Н.С.", "Сп.зал ФТИ"),
@@ -60,12 +65,12 @@ SAT_DEN_4 = (4, "МДК.04.01 Монтаж, наладка и ремонт (лб
 
 SCHEDULE = {
     "числитель": {
-        0: MON, 1: TUE_BASE + TUE_NUM, 2: WED, 3: THU,
+        0: MON_NUM, 1: TUE_BASE + TUE_NUM, 2: WED, 3: THU,
         4: [FRI_NUM_1] + FRI_BASE, 5: SAT_BASE + [SAT_NUM_4], 6: [],
     },
     "знаменатель": {
         0: MON, 1: TUE_BASE + TUE_DEN, 2: WED, 3: THU,
-        4: [FRI_DEN_1] + FRI_BASE, 5: SAT_BASE + [SAT_DEN_4], 6: [],
+        4: [FRI_DEN_1] + FRI_BASE, 5: [MOVED_TO_SAT] + SAT_BASE + [SAT_DEN_4], 6: [],
     },
 }
 
@@ -76,7 +81,39 @@ DEFAULT_OVERRIDES = {
 }
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot_data.json")
-_data = {"overrides": {}, "homework": [], "hw_next_id": 1}
+
+# Расписание пересдач с фото (ведомости). Даты в формате ДД.ММ.ГГ.
+RETAKES_DEFAULT = [
+    {"id": 1, "group": "ФТ24АР52КС", "subject": "Дискретная математика",
+     "teacher": "Доцент Деткова А.В.", "dates": ["03.09.26", "09.09.26", "11.09.26", "16.09.26", "18.09.26"],
+     "time": "13:00", "room": "209 В"},
+    {"id": 2, "group": "ФТ24АР52КС", "subject": "Информационные технологии",
+     "teacher": "Ст. преп. Новакова Т.С.", "dates": ["03.09.26", "08.09.26"],
+     "time": "13:00", "room": "301 В"},
+    {"id": 3, "group": "ФТ24АР52КС", "subject": "Элементы высшей математики",
+     "teacher": "Доцент Деткова А.В.", "dates": ["03.09.26", "09.09.26", "11.09.26", "16.09.26", "18.09.26"],
+     "time": "14:00", "room": "209 В"},
+    {"id": 4, "group": "ФТ24АР52КС", "subject": "Метрология и электротехнические измерения",
+     "teacher": "Преп. Костантиновская А.В.", "dates": ["04.09.26", "08.09.26", "12.09.26", "15.09.26", "19.09.26"],
+     "time": "13:05", "room": "Э-228 (15.09 — Э-226)"},
+    {"id": 5, "group": "ФТ24АР52КС", "subject": "МДК04.03 Технология создания мультимедийной информации",
+     "teacher": "Ст. преп. Новакова Т.С.", "dates": ["03.09.26", "08.09.26", "10.09.26", "15.09.26", "17.09.26"],
+     "time": "13:00", "room": "301 В"},
+    {"id": 6, "group": "ФТ23АР52ЭС", "subject": "Электрические машины и аппараты",
+     "teacher": "Ст. преп. Васильева Е.А.", "dates": ["04.09.26", "11.09.26", "18.09.26"],
+     "time": "13:05", "room": "Э-233"},
+    {"id": 7, "group": "ФТ23АР52ЭС", "subject": "МДК.01.01 Электроснабжение электротехнического оборудования",
+     "teacher": "Ст. преп. Лукашевич Е.Б.", "dates": ["03.09.26", "09.09.26", "10.09.26", "16.09.26", "17.09.26"],
+     "time": "14:30", "room": "Э-227"},
+    {"id": 8, "group": "ФТ23АР52ЭС", "subject": "МДК.01.02 Электроснабжение электротехнологического оборудования",
+     "teacher": "Ст. преп. Лукашевич Е.Б.", "dates": ["03.09.26", "09.09.26", "10.09.26", "16.09.26", "17.09.26"],
+     "time": "14:30", "room": "Э-227"},
+    {"id": 9, "group": "ФТ23АР52ЭС", "subject": "ПМ.01 Организация электроснабжения по отраслям",
+     "teacher": "Ст. преп. Лукашевич Е.Б.", "dates": ["03.09.26", "09.09.26", "10.09.26", "16.09.26", "17.09.26"],
+     "time": "14:30", "room": "Э-227"},
+]
+
+_data = {"overrides": {}, "homework": [], "hw_next_id": 1, "retakes": []}
 _states: dict[int, dict] = {}
 
 
@@ -89,6 +126,7 @@ def _load():
             _data["overrides"] = loaded.get("overrides", {})
             _data["homework"] = loaded.get("homework", [])
             _data["hw_next_id"] = loaded.get("hw_next_id", 1)
+            _data["retakes"] = loaded.get("retakes", [])
     except Exception:
         pass
 
@@ -263,6 +301,73 @@ def hw_delete(hid: int) -> bool:
     return False
 
 
+# ---------- Пересдачи ----------
+def _parse_retake_date(s: str):
+    """ДД.ММ.ГГ -> date. Мусор -> None."""
+    try:
+        import re
+        m = re.match(r"(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})$", (s or "").strip())
+        if not m:
+            return None
+        d, mo, y = int(m.group(1)), int(m.group(2)), m.group(3)
+        year = 2000 + int(y) if len(y) == 2 else int(y)
+        return date(year, mo, d)
+    except Exception:
+        return None
+
+
+def get_retakes() -> list:
+    """Все пересдачи: сначала правки админа, иначе данные с фото."""
+    return list(_data.get("retakes") or RETAKES_DEFAULT)
+
+
+def retakes_text(today: date | None = None) -> str:
+    today = today or get_local_now().date()
+    items = get_retakes()
+    # только предстоящие даты
+    upcoming = []
+    for r in items:
+        ds = sorted({d for d in (r.get("dates") or []) if (_parse_retake_date(d) or date.min) >= today})
+        if ds:
+            upcoming.append({**r, "dates": ds})
+    if not upcoming:
+        return "📝 <b>Пересдачи</b>\n➖➖➖➖➖➖➖\nВсе даты прошли. Ждём новые ведомости!"
+    groups: dict[str, list] = {}
+    for r in upcoming:
+        groups.setdefault(r.get("group", "?"), []).append(r)
+    parts = ["📝 <b>Расписание пересдач</b>\n➖➖➖➖➖➖➖"]
+    for gname, rs in groups.items():
+        parts.append(f"\n<b>{gname}</b>")
+        for r in rs:
+            dates = ", ".join(d[:5] for d in r["dates"])
+            parts.append(f"\n• <b>{r['subject']}</b>\n  {r.get('teacher','')}\n  📅 {dates} в {r.get('time','')}\n  🚪 {fmt_room(r.get('room',''))}")
+    return "\n".join(parts)
+
+
+def retake_add(group: str, subject: str, teacher: str, dates: list, time_: str, room: str) -> int:
+    base = list(_data.get("retakes") or RETAKES_DEFAULT)
+    used = {r["id"] for r in base}
+    nid = 1
+    while nid in used:
+        nid += 1
+    base.append({"id": nid, "group": group, "subject": subject, "teacher": teacher,
+                 "dates": dates, "time": time_, "room": room})
+    _data["retakes"] = sorted(base, key=lambda r: r["id"])
+    _save()
+    return nid
+
+
+def retake_delete(rid: int) -> bool:
+    base = list(_data.get("retakes") or RETAKES_DEFAULT)
+    for i, r in enumerate(base):
+        if r["id"] == rid:
+            base.pop(i)
+            _data["retakes"] = base
+            _save()
+            return True
+    return False
+
+
 # ---------- Правки расписания ----------
 def set_day_override(day: date, lessons: list) -> None:
     _data["overrides"][day.isoformat()] = _norm_lessons(lessons)
@@ -339,6 +444,7 @@ MAIN_INLINE = [
     [("📅 Сегодня", "cmd:today"), ("📅 Завтра", "cmd:tomorrow")],
     [("🔢 Неделя", "cmd:week"), ("⏰ Сейчас", "cmd:now")],
     [("🗓 Расписание", "cmd:schedule"), ("📝 Д/З", "cmd:hw")],
+    [("📝 Пересдачи", "cmd:retakes")],
 ]
 ADMIN_INLINE = [
     [("➕ ДЗ", "adm:hw_add"), ("🗑 ДЗ", "adm:hw_del")],
@@ -351,6 +457,8 @@ ADMIN_INLINE = [
 def inline_main(user_id: int):
     kb = [[{"text": t, "callback_data": d} for t, d in row] for row in MAIN_INLINE]
     if is_admin(user_id):
+        if APP_URL:
+            kb.append([{"text": "📱 Миниапп (админ)", "web_app": {"url": APP_URL + "/mini"}}])
         kb.append([{"text": "⚙️ Админка", "callback_data": "adm:menu"}])
     return kb
 
@@ -547,7 +655,7 @@ def process_message(user_id: int, text: str, today: date | None = None,
         txt = ("👋 Привет! Я бот группы <b>ФТ24АР52ЭО</b>\n\n"
                "Что умею:\n📅 <b>Сегодня</b> — пары на сегодня\n📅 <b>Завтра</b> — пары на завтра\n"
                "🔢 <b>Неделя</b> — числитель или знаменатель\n⏰ <b>Сейчас</b> — какая пара идет\n"
-               "🗓 <b>Расписание</b> — вся неделя\n📝 <b>Д/З</b> — домашка\n\n"
+                "🗓 <b>Расписание</b> — вся неделя\n📝 <b>Д/З</b> — домашка\n📝 <b>Пересдачи</b> — долги по ведомостям\n\n"
                "В группе пиши с точкой: <b>.завтра</b>, <b>.сейчас</b> — или жми кнопки ⬇️")
         return txt, get_keyboard(user_id, bool(st.get("mode")))
     if n in ("help", "помощь", "хелп"):
@@ -569,7 +677,9 @@ def process_message(user_id: int, text: str, today: date | None = None,
         return get_week_schedule_text(today), get_keyboard(user_id, bool(st.get("mode")))
     if n in ("hw", "📝 д/з", "д/з", "дз", "домашка", "домашнее задание", "д/з 📝"):
         return hw_list_text(), get_keyboard(user_id, bool(st.get("mode")))
-    return "🤔 Не понял\nНапиши: <b>Сегодня</b>, <b>Завтра</b>, <b>Неделя</b>, <b>Сейчас</b>, <b>Расписание</b> или <b>📝 Д/З</b>", get_keyboard(user_id, bool(st.get("mode")))
+    if n in ("retakes", "пересдачи", "пересдача", "📝 пересдачи"):
+        return retakes_text(today), get_keyboard(user_id, bool(st.get("mode")))
+    return "🤔 Не понял\nНапиши: <b>Сегодня</b>, <b>Завтра</b>, <b>Неделя</b>, <b>Сейчас</b>, <b>Расписание</b>, <b>📝 Д/З</b> или <b>📝 Пересдачи</b>", get_keyboard(user_id, bool(st.get("mode")))
 
 
 def process_callback(user_id: int, data: str, today: date | None = None,
@@ -586,6 +696,7 @@ def process_callback(user_id: int, data: str, today: date | None = None,
         "cmd:now": lambda: (get_now_status(today, now), get_keyboard(user_id)),
         "cmd:schedule": lambda: (get_week_schedule_text(today), get_keyboard(user_id)),
         "cmd:hw": lambda: (hw_list_text(), get_keyboard(user_id)),
+        "cmd:retakes": lambda: (retakes_text(today), get_keyboard(user_id)),
     }
     if d in main:
         return main[d]()
