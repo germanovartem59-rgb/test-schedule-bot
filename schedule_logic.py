@@ -505,9 +505,6 @@ ADMIN_INLINE = [
 
 def inline_main(user_id: int):
     kb = [[{"text": t, "callback_data": d} for t, d in row] for row in MAIN_INLINE]
-    if is_admin(user_id):
-        if APP_URL:
-            kb.append([{"text": "📱 Миниапп (админ)", "web_app": {"url": APP_URL + "/mini"}}])
     return kb
 
 
