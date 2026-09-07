@@ -508,7 +508,6 @@ def inline_main(user_id: int):
     if is_admin(user_id):
         if APP_URL:
             kb.append([{"text": "📱 Миниапп (админ)", "web_app": {"url": APP_URL + "/mini"}}])
-        kb.append([{"text": "⚙️ Админка", "callback_data": "adm:menu"}])
     return kb
 
 
