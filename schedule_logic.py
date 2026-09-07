@@ -10,7 +10,7 @@ except Exception:
     LOCAL_TZ = None
 
 ADMIN_IDS = [5634691608]
-APP_URL = os.getenv("APP_URL", "").rstrip("/")
+APP_URL = os.getenv("APP_URL", "").strip().rstrip("/")
 
 # Неделя Пн 31.08 – Вс 06.09 = числитель
 SEMESTER_START = date(2026, 8, 31)

@@ -16,7 +16,7 @@ import schedule_logic as SL
 from schedule_logic import process_message, process_callback
 
 app = Flask(__name__)
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 API = "https://api.telegram.org/bot{token}/{method}"
 _last_bot_msg: dict[int, int] = {}
 
